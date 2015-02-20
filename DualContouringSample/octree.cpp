@@ -1,3 +1,24 @@
+/*
+
+Implementations of Octree member functions.
+
+Copyright (C) 2011  Tao Ju
+
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public License
+(LGPL) as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public
+License along with this library; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+*/
+
 #include	"octree.h"
 #include	"density.h"
 
@@ -5,6 +26,9 @@
 
 const int MATERIAL_AIR = 0;
 const int MATERIAL_SOLID = 1;
+
+const float QEF_ERROR = 1e-6f;
+const int QEF_SWEEPS = 4;
 
 // ----------------------------------------------------------------------------
 
@@ -84,8 +108,8 @@ OctreeNode* SimplifyOctree(OctreeNode* node, float threshold)
 		return node;
 	}
 
-	QEF qef;
-	int signs[8] = { -1, -1, -1, -1, -1, -1, -1, -1 };
+	svd::QefSolver qef;
+	int signs[8] = { -1 };
 	int midsign = -1;
 	int edgeCount = 0;
 	bool isCollapsible = true;
@@ -118,21 +142,25 @@ OctreeNode* SimplifyOctree(OctreeNode* node, float threshold)
 		return node;
 	}
 
-	// at this point the masspoint will actually be a sum, so divide to make it the average
-	qef.masspoint /= (float)edgeCount;
-	vec3 position = qef.solve();
+	svd::Vec3 qefPosition;
+	const float error = qef.solve(qefPosition, QEF_ERROR, QEF_SWEEPS, QEF_ERROR);
 
-	if (qef.error > threshold)
+	// convert to glm vec3 for ease of use
+	vec3 position(qefPosition.x, qefPosition.y, qefPosition.z);
+
+	// at this point the masspoint will actually be a sum, so divide to make it the average
+	if (error > threshold)
 	{
 		// this collapse breaches the threshold
 		return node;
 	}
 
-	if (position[0] < node->min.x || position[0] > (node->min.x + node->size) ||
-		position[1] < node->min.y || position[1] > (node->min.y + node->size) ||
-		position[2] < node->min.z || position[2] > (node->min.z + node->size))
+	if (position.x < node->min.x || position.x > (node->min.x + node->size) ||
+		position.y < node->min.y || position.y > (node->min.y + node->size) ||
+		position.z < node->min.z || position.z > (node->min.z + node->size))
 	{
-		position = qef.masspoint;
+		const auto& mp = qef.getMassPoint();
+		position = vec3(mp.x, mp.y, mp.z);
 	}
 
 	// change the node from an internal node to a 'psuedo leaf' node
@@ -167,7 +195,7 @@ OctreeNode* SimplifyOctree(OctreeNode* node, float threshold)
 
 	drawInfo->averageNormal = glm::normalize(drawInfo->averageNormal);
 	drawInfo->position = position;
-	drawInfo->qef = qef;
+	drawInfo->qef = qef.getData();
 
 	for (int i = 0; i < 8; i++)
 	{
@@ -500,8 +528,9 @@ OctreeNode* ConstructLeaf(OctreeNode* leaf)
 
 	// otherwise the voxel contains the surface, so find the edge intersections
 	const int MAX_CROSSINGS = 6;
-	vec3 positions[MAX_CROSSINGS], normals[MAX_CROSSINGS];
 	int edgeCount = 0;
+	vec3 averageNormal;
+	svd::QefSolver qef;
 
 	for (int i = 0; i < 12 && edgeCount < MAX_CROSSINGS; i++)
 	{
@@ -521,16 +550,20 @@ OctreeNode* ConstructLeaf(OctreeNode* leaf)
 		const vec3 p1 = vec3(leaf->min + CHILD_MIN_OFFSETS[c1]);
 		const vec3 p2 = vec3(leaf->min + CHILD_MIN_OFFSETS[c2]);
 		const vec3 p = ApproximateZeroCrossingPosition(p1, p2);
+		const vec3 n = CalculateSurfaceNormal(p);
+		qef.add(p.x, p.y, p.z, n.x, n.y, n.z);
 
-		positions[edgeCount] = p;
-		normals[edgeCount] = CalculateSurfaceNormal(p);
+		averageNormal += n;
 
 		edgeCount++;
 	}
-	
+
+	svd::Vec3 qefPosition;
+	qef.solve(qefPosition, QEF_ERROR, QEF_SWEEPS, QEF_ERROR);
+
 	OctreeDrawInfo* drawInfo = new OctreeDrawInfo;
-	drawInfo->qef.initialise(edgeCount, normals, positions);
-	drawInfo->position = drawInfo->qef.solve();
+	drawInfo->position = vec3(qefPosition.x, qefPosition.y, qefPosition.z);
+	drawInfo->qef = qef.getData();
 
 	const vec3 min = vec3(leaf->min);
 	const vec3 max = vec3(leaf->min + ivec3(leaf->size));
@@ -538,15 +571,11 @@ OctreeNode* ConstructLeaf(OctreeNode* leaf)
 		drawInfo->position.y < min.y || drawInfo->position.y > max.y ||
 		drawInfo->position.z < min.z || drawInfo->position.z > max.z)
 	{
-		drawInfo->position = drawInfo->qef.masspoint;
+		const auto& mp = qef.getMassPoint();
+		drawInfo->position = vec3(mp.x, mp.y, mp.z);
 	}
 
-	for (int i = 0; i < edgeCount; i++)
-	{
-		drawInfo->averageNormal += normals[i];
-	}
-	drawInfo->averageNormal = glm::normalize(drawInfo->averageNormal);
-
+	drawInfo->averageNormal = glm::normalize(averageNormal / (float)edgeCount);
 	drawInfo->corners = corners;
 
 	leaf->type = Node_Leaf;

@@ -1,81 +1,103 @@
-#ifndef	QEF_H_HAS_BEEN_INCLUDED
-#define	QEF_H_HAS_BEEN_INCLUDED
+/*
+ * This is free and unencumbered software released into the public domain.
+ *
+ * Anyone is free to copy, modify, publish, use, compile, sell, or
+ * distribute this software, either in source code form or as a compiled
+ * binary, for any purpose, commercial or non-commercial, and by any
+ * means.
+ *
+ * In jurisdictions that recognize copyright laws, the author or authors
+ * of this software dedicate any and all copyright interest in the
+ * software to the public domain. We make this dedication for the benefit
+ * of the public at large and to the detriment of our heirs and
+ * successors. We intend this dedication to be an overt act of
+ * relinquishment in perpetuity of all present and future rights to this
+ * software under copyright law.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ *
+ * For more information, please refer to <http://unlicense.org/>
+ */
+#ifndef QEF_H
+#define QEF_H
+#ifndef NO_OSTREAM
+#include <iostream>
+#endif
 
-#include <glm/glm.hpp>
-
-struct QEF
+#include "svd.h"
+namespace svd
 {
-	QEF()
-	{
-		clear();
-	}
+    class QefData
+    {
+    public:
+        float ata_00, ata_01, ata_02, ata_11, ata_12, ata_22;
+        float atb_x, atb_y, atb_z;
+        float btb;
+        float massPoint_x, massPoint_y, massPoint_z;
+        int numPoints;
 
-	void clear()
-	{
-		for (int i = 0; i < 6; i++)
-		{
-			AtA[i] = 0.f;
-		}
+        QefData();
 
-		AtB = glm::vec3(0.f);
-		BtB = 0.f;
-		masspoint = glm::vec3(0.f);
-		error = 0.f;
-	}
+        QefData(const float ata_00, const float ata_01,
+                const float ata_02, const float ata_11, const float ata_12,
+                const float ata_22, const float atb_x, const float atb_y,
+                const float atb_z, const float btb, const float massPoint_x,
+                const float massPoint_y, const float massPoint_z,
+                const int numPoints) ;
 
-	// construct the QR representation discussed in the paper using normals at the 
-	// zero-crossing and the world space position of the zero-crossing 
-	void initialise(int count, const glm::vec3 normals[], const glm::vec3 positions[])
-	{
-		for (int i = 0; i < count; i++)
-		{
-			const glm::vec3& n = normals[i];
-			const glm::vec3& p = positions[i];
+        void add(const QefData &rhs) ;
 
-			AtA[0] += n.x * n.x;
-			AtA[1] += n.x * n.y;
-			AtA[2] += n.x * n.z;
-			AtA[3] += n.y * n.y;
-			AtA[4] += n.y * n.z;
-			AtA[5] += n.z * n.z;
+        void clear() ;
 
-			const float pn = glm::dot(p, n);
-			AtB += n * pn;
-			BtB += pn * pn;
-			masspoint += p;
-		}
+        void set(const float ata_00, const float ata_01,
+                 const float ata_02, const float ata_11, const float ata_12,
+                 const float ata_22, const float atb_x, const float atb_y,
+                 const float atb_z, const float btb, const float massPoint_x,
+                 const float massPoint_y, const float massPoint_z,
+                 const int numPoints) ;
 
-		if (count)
-		{
-			masspoint /= (float)count;
-		}
-	}
+        void set(const QefData &rhs);
 
-	// note that even with add operation the masspoint will need to be a sum and need to be
-	// divided so that it is actually the masspoint (this is a bit clunky)
-	void add(const QEF& other)
-	{
-		for (int j = 0; j < 6; j++)
-		{
-			AtA[j] += other.AtA[j];
-		}
+        QefData(const QefData &rhs);
+        QefData &operator= (const QefData &rhs);
+    };
+#ifndef NO_OSTREAM
+    std::ostream &operator<<(std::ostream &os, const QefData &d) ;
+#endif
+    class QefSolver
+    {
+    private:
+        QefData data;
+        SMat3 ata;
+        Vec3 atb, massPoint, x;
+        bool hasSolution;
+    public:
+        QefSolver() ;
+    public:
 
-		AtB += other.AtB;
-		BtB += other.BtB;
-		masspoint += other.masspoint;
-		error += other.error;
-	}
+		const Vec3& getMassPoint() const { return massPoint; }
 
-	// wrapper around the "calcPoint" function in the original code, optionally get the error
-	// as well as the minimising point for the QEF
-	glm::vec3 solve();
-
-	float			AtA[6];
-	glm::vec3		AtB;
-	float			BtB;
-	glm::vec3		masspoint;
-	float			error;
+        void add(const float px, const float py, const float pz,
+                 float nx, float ny, float nz) ;
+        void add(const Vec3 &p, const Vec3 &n);
+        void add(const QefData &rhs) ;
+		QefData getData() ;
+        float getError();
+        float getError(const Vec3 &pos);
+        void reset();
+        float solve(Vec3 &outx, const float svd_tol,
+                     const int svd_sweeps, const float pinv_tol) ;
+    private:
+        QefSolver(const QefSolver &rhs);
+        QefSolver &operator=(const QefSolver &rhs);
+        void setAta();
+        void setAtb() ;
+    };
 };
-
-#endif	// QEF_H_HAS_BEEN_INCLUDED
-
+#endif

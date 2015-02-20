@@ -90,6 +90,7 @@
     <ClCompile Include="mesh.cpp" />
     <ClCompile Include="octree.cpp" />
     <ClCompile Include="qef.cpp" />
+    <ClCompile Include="svd.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="density.h" />
@@ -97,10 +98,14 @@
     <ClInclude Include="mesh.h" />
     <ClInclude Include="octree.h" />
     <ClInclude Include="qef.h" />
+    <ClInclude Include="svd.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="shader.frag" />
     <None Include="shader.vert" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\README.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
