@@ -109,7 +109,7 @@ OctreeNode* SimplifyOctree(OctreeNode* node, float threshold)
 	}
 
 	svd::QefSolver qef;
-	int signs[8] = { -1 };
+	int signs[8] = { -1, -1, -1, -1, -1, -1, -1, -1 };
 	int midsign = -1;
 	int edgeCount = 0;
 	bool isCollapsible = true;
@@ -143,7 +143,8 @@ OctreeNode* SimplifyOctree(OctreeNode* node, float threshold)
 	}
 
 	svd::Vec3 qefPosition;
-	const float error = qef.solve(qefPosition, QEF_ERROR, QEF_SWEEPS, QEF_ERROR);
+	qef.solve(qefPosition, QEF_ERROR, QEF_SWEEPS, QEF_ERROR);
+	float error = qef.getError();
 
 	// convert to glm vec3 for ease of use
 	vec3 position(qefPosition.x, qefPosition.y, qefPosition.z);
@@ -529,7 +530,7 @@ OctreeNode* ConstructLeaf(OctreeNode* leaf)
 	// otherwise the voxel contains the surface, so find the edge intersections
 	const int MAX_CROSSINGS = 6;
 	int edgeCount = 0;
-	vec3 averageNormal;
+	vec3 averageNormal(0.f);
 	svd::QefSolver qef;
 
 	for (int i = 0; i < 12 && edgeCount < MAX_CROSSINGS; i++)
